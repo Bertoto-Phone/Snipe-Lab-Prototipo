@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Berto Sniper Lab - PC Optimized</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Inter', sans-serif; cursor: crosshair; }
+        canvas { display: block; }
+        
+        #overlay {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at center, #1e40af, #020617);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            color: white;
+            text-align: center;
+        }
+
+        .hud {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            opacity: 0;
+            transition: opacity 0.5s;
+            z-index: 10;
+        }
+
+        .settings-panel {
+            position: absolute;
+            right: -350px;
+            top: 0;
+            width: 320px;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.95);
+            border-left: 2px solid #3b82f6;
+            padding: 40px 30px;
+            color: white;
+            transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 150;
+            pointer-events: all;
+            backdrop-filter: blur(10px);
+        }
+        .settings-panel.open { right: 0; }
+
+        .crosshair-container {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 30px; height: 30px;
+        }
+        .crosshair-line-v { width: 1px; height: 100%; background: rgba(59, 130, 246, 0.8); position: absolute; left: 50%; }
+        .crosshair-line-h { height: 1px; width: 100%; background: rgba(59, 130, 246, 0.8); position: absolute; top: 50%; }
+
+        .zoom-scope {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle, transparent 20%, rgba(0,0,0,0.95) 70%);
+            opacity: 0;
+            transition: opacity 0.15s;
+            pointer-events: none;
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .zoom-scope::after {
+            content: '';
+            width: 100vw; height: 1px; background: rgba(255,255,255,0.1); position: absolute;
+        }
+        .zoom-scope::before {
+            content: '';
+            height: 100vh; width: 1px; background: rgba(255,255,255,0.1); position: absolute;
+        }
+
+        #hitMarker {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%) rotate(45deg);
+            width: 24px; height: 24px;
+            border: 2px solid #ef4444;
+            opacity: 0;
+        }
+        .hit-anim { animation: hitFade 0.2s ease-out; }
+        @keyframes hitFade { 0% { opacity: 1; scale: 1.8; } 100% { opacity: 0; scale: 1; } }
+
+        .ability-bar { width: 100%; height: 3px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+        .fill-blink { height: 100%; background: #38bdf8; width: 100%; }
+        .fill-jump { height: 100%; background: #fbbf24; width: 100%; }
+        .fill-blackhole { height: 100%; background: #a78bfa; width: 100%; }
+
+        input[type="range"] { cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div id="overlay">
+        <h1 class="text-7xl font-black mb-2 tracking-tighter italic drop-shadow-2xl">SNIPER <span class="text-blue-500">LAB</span></h1>
+        <p class="text-blue-300/60 text-xs mb-10 uppercase tracking-[0.3em] font-bold">Desktop Performance Optimized</p>
+        <button onclick="startGame()" class="bg-blue-600 text-white hover:bg-blue-500 px-16 py-5 font-black rounded-sm transition-all shadow-2xl uppercase tracking-widest text-lg transform hover:scale-105 active:scale-95">
+            Iniciar Secuencia
+        </button>
+        <p class="mt-8 text-gray-500 text-[10px] uppercase font-mono">[ W A S D ] Moverse | [ SPACE ] Saltar | [ E ] Blink | [ CLICK ] Disparar | [ R-CLICK ] Zoom | [ WHEEL ] Singularidad</p>
+    </div>
+
+    <div id="settings" class="settings-panel">
+        <h2 class="text-2xl font-black mb-8 border-b border-blue-900 pb-4 italic text-blue-400">SISTEMA</h2>
+        <div class="space-y-6">
+            <div>
+                <label class="block text-[10px] uppercase text-gray-500 mb-2 font-bold tracking-widest">Identificación</label>
+                <input type="text" id="nameInput" class="w-full bg-blue-950/30 border border-blue-900 p-3 text-sm outline-none focus:border-blue-500 text-white font-mono" placeholder="BERTO">
+            </div>
+            <div>
+                <label class="block text-[10px] uppercase text-gray-500 mb-2 font-bold tracking-widest">Sensibilidad Mouse</label>
+                <input type="range" id="sensInput" min="1" max="100" value="35" class="w-full accent-blue-500">
+            </div>
+            <div>
+                <label class="block text-[10px] uppercase text-gray-500 mb-2 font-bold tracking-widest">Salida de Audio</label>
+                <input type="range" id="volInput" min="0" max="100" value="60" class="w-full accent-blue-500">
+            </div>
+            <div class="pt-8">
+                <button class="w-full bg-blue-600 py-4 text-xs font-black uppercase text-white rounded-sm shadow-lg hover:bg-blue-500 transition-colors" onclick="toggleSettings(false)">Guardar Cambios</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="zoomScope" class="zoom-scope"></div>
+
+    <div class="hud" id="hud">
+        <div class="flex justify-between items-start">
+            <div class="bg-slate-950/80 p-5 backdrop-blur-xl border-l-2 border-blue-500 shadow-2xl">
+                <p id="hudName" class="text-blue-400 font-mono text-sm tracking-tight mb-1">ID: BERTO_STATION</p>
+                <p class="text-white text-xl font-black italic">BAJAS: <span id="score" class="text-blue-500">0</span></p>
+                
+                <div class="mt-6 space-y-3">
+                    <div>
+                        <div class="flex justify-between text-[9px] font-bold text-sky-400 uppercase tracking-tighter"><span>Blink [E]</span><span>Estable</span></div>
+                        <div class="ability-bar"><div id="blinkBar" class="fill-blink"></div></div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-[9px] font-bold text-amber-500 uppercase tracking-tighter"><span>Impulso [Space]</span><span id="jumpStatus">Listo</span></div>
+                        <div class="ability-bar"><div id="jumpBar" class="fill-jump"></div></div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-[9px] font-bold text-indigo-400 uppercase tracking-tighter"><span>Singularidad [Wheel]</span><span id="holeStatus">Listo</span></div>
+                        <div class="ability-bar"><div id="holeBar" class="fill-blackhole"></div></div>
+                    </div>
+                </div>
+            </div>
+            <button class="pointer-events-all bg-white/5 hover:bg-white/10 px-6 py-2 text-white text-[10px] font-bold border border-white/10 uppercase tracking-widest transition-all" onclick="toggleSettings(true)">Opciones [Esc]</button>
+        </div>
+        <div class="crosshair-container"><div class="crosshair-line-v"></div><div class="crosshair-line-h"></div></div>
+        <div id="hitMarker"></div>
+    </div>
+
+    <script>
+        // Inicialización de variables nulas para evitar errores de acceso temprano
+        let scene = null, camera = null, renderer = null, raycaster = null, gun = null, audioCtx = null;
+        let moveState = { fwd: false, bck: false, lft: false, rgt: false };
+        let mouseState = { left: false, right: false };
+        let settings = { name: "BERTO", sens: 0.0012, zoomSens: 0.0005, volume: 0.6 };
+        
+        const player = { 
+            height: 1.7, velocityY: 0, grounded: false, speed: 0.18, jumpForce: 0.22,
+            blinkDistance: 15, superJumpForce: 0.65, superJumpCooldown: 3000, 
+            lastSuperJump: 0, blackHoleCooldown: 8000, lastBlackHole: 0, lastJumpPress: 0 
+        };
+
+        let targets = [], blackHoles = [], worldProps = [], score = 0, lastFireTime = 0, fireRate = 100;
+        const GRAVITY = 0.01;
+
+        const GEOMS = {
+            classic: new THREE.OctahedronGeometry(0.8, 0),
+            drone: new THREE.CylinderGeometry(0.5, 0.5, 0.3, 6),
+            tank: new THREE.BoxGeometry(1.5, 1.5, 1.5),
+            tree: new THREE.ConeGeometry(0.6, 2.5, 5),
+            flower: new THREE.SphereGeometry(0.2, 6, 6)
+        };
+
+        function startGame() {
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('hud').style.opacity = '1';
+            if (!scene) init();
+            document.body.requestPointerLock();
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playSound(type) {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const now = audioCtx.currentTime;
+            const masterGain = audioCtx.createGain();
+            masterGain.gain.setValueAtTime(settings.volume, now);
+            masterGain.connect(audioCtx.destination);
+            
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.connect(g); g.connect(masterGain);
+
+            if (type === 'shoot') {
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(220, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.08);
+                g.gain.setValueAtTime(0.2, now); g.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(); osc.stop(now + 0.1);
+            } else if (type === 'hit') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(900, now);
+                g.gain.setValueAtTime(0.1, now); g.gain.linearRampToValueAtTime(0, now + 0.05);
+                osc.start(); osc.stop(now + 0.05);
+            } else if (type === 'hole') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(40, now);
+                osc.frequency.linearRampToValueAtTime(150, now + 4);
+                g.gain.setValueAtTime(0.1, now); osc.start(); osc.stop(now + 4.5);
+            }
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x020617); 
+            scene.fog = new THREE.Fog(0x020617, 30, 400);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, player.height, 30);
+            camera.rotation.order = 'YXZ';
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.VSMShadowMap;
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.body.appendChild(renderer.domElement);
+
+            raycaster = new THREE.Raycaster();
+            
+            scene.add(new THREE.AmbientLight(0x404040, 0.4));
+            const light = new THREE.PointLight(0x3b82f6, 2, 100);
+            light.position.set(20, 50, 20);
+            scene.add(light);
+
+            createLevel();
+            createGun();
+            setupEvents();
+            animate();
+        }
+
+        function createLevel() {
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(800, 800), new THREE.MeshStandardMaterial({ 
+                color: 0x0f172a, roughness: 0.8, metalness: 0.2
+            }));
+            floor.rotation.x = -Math.PI/2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+            
+            const grid = new THREE.GridHelper(800, 100, 0x1e3a8a, 0x0f172a);
+            grid.position.y = 0.01;
+            scene.add(grid);
+
+            const treeMat = new THREE.MeshStandardMaterial({ color: 0x1e40af, flatShading: true });
+            for(let i=0; i<100; i++) {
+                const prop = new THREE.Mesh(GEOMS.tree, treeMat);
+                prop.position.set((Math.random()-0.5)*500, 1.25, (Math.random()-0.5)*500);
+                prop.rotation.y = Math.random() * Math.PI;
+                prop.receiveShadow = true;
+                scene.add(prop);
+                worldProps.push({ mesh: prop, velocity: new THREE.Vector3(), mass: 12, grounded: true });
+            }
+
+            for(let i=0; i<20; i++) spawnTarget();
+        }
+
+        function createGun() {
+            gun = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.15, 1.8), new THREE.MeshStandardMaterial({color: 0x000000, metalness: 0.8}));
+            const core = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 1.82), new THREE.MeshBasicMaterial({color: 0x3b82f6}));
+            gun.add(body, core); gun.position.set(0.6, -0.4, -1);
+            camera.add(gun); scene.add(camera);
+        }
+
+        function spawnTarget() {
+            const types = ['classic', 'drone', 'tank'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            const color = type === 'drone' ? 0x60a5fa : (type === 'tank' ? 0x1e40af : 0xef4444);
+            const mesh = new THREE.Mesh(GEOMS[type], new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.3 }));
+            mesh.position.set((Math.random()-0.5)*200, 5 + Math.random()*15, -60 - Math.random()*150);
+            mesh.castShadow = true; scene.add(mesh);
+            targets.push({ mesh, type, velocity: new THREE.Vector3((Math.random()-0.5)*0.1, 0, (Math.random()-0.5)*0.1), mass: type === 'tank' ? 6 : 2 });
+        }
+
+        function setupEvents() {
+            window.addEventListener('wheel', (e) => {
+                if (document.pointerLockElement) spawnBlackHole();
+            });
+
+            document.addEventListener('keydown', (e) => {
+                const key = e.code;
+                if (key === 'KeyW') moveState.fwd = true; if (key === 'KeyS') moveState.bck = true;
+                if (key === 'KeyA') moveState.lft = true; if (key === 'KeyD') moveState.rgt = true;
+                if (key === 'Escape') toggleSettings(true);
+                
+                if (key === 'Space') {
+                    const now = Date.now();
+                    if (now - player.lastJumpPress < 250) {
+                        if (now - player.lastSuperJump > player.superJumpCooldown) {
+                            player.velocityY = player.superJumpForce; player.grounded = false; 
+                            player.lastSuperJump = now; updateAbilityUI('jumpBar', player.superJumpCooldown, 'jumpStatus');
+                        }
+                    } else if (player.grounded) { player.velocityY = player.jumpForce; player.grounded = false; }
+                    player.lastJumpPress = now;
+                }
+                
+                if (key === 'KeyE') {
+                    const dir = new THREE.Vector3(); camera.getWorldDirection(dir); dir.y = 0; dir.normalize();
+                    camera.position.addScaledVector(dir, player.blinkDistance);
+                }
+            });
+
+            document.addEventListener('keyup', (e) => {
+                const key = e.code;
+                if (key === 'KeyW') moveState.fwd = false; if (key === 'KeyS') moveState.bck = false;
+                if (key === 'KeyA') moveState.lft = false; if (key === 'KeyD') moveState.rgt = false;
+            });
+
+            document.addEventListener('mousedown', (e) => {
+                if (!document.pointerLockElement && document.getElementById('overlay').style.display === 'none') {
+                    document.body.requestPointerLock();
+                    return;
+                }
+                if (e.button === 0) mouseState.left = true;
+                if (e.button === 2) mouseState.right = true;
+            });
+
+            document.addEventListener('mouseup', (e) => {
+                if (e.button === 0) mouseState.left = false;
+                if (e.button === 2) mouseState.right = false;
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (document.pointerLockElement && camera) {
+                    const s = mouseState.right ? settings.zoomSens : settings.sens;
+                    camera.rotation.y -= e.movementX * s;
+                    camera.rotation.x -= e.movementY * s;
+                    camera.rotation.x = Math.max(-Math.PI/2.1, Math.min(Math.PI/2.1, camera.rotation.x));
+                }
+            });
+            
+            document.addEventListener('contextmenu', e => e.preventDefault());
+        }
+
+        function spawnBlackHole() {
+            const now = Date.now();
+            if (now - player.lastBlackHole < player.blackHoleCooldown) return;
+            
+            playSound('hole');
+            const group = new THREE.Group();
+            const core = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 16), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+            const aura = new THREE.Mesh(new THREE.SphereGeometry(1.5, 16, 16), new THREE.MeshBasicMaterial({ color: 0x4f46e5, transparent: true, opacity: 0.3 }));
+            const light = new THREE.PointLight(0x6366f1, 8, 50);
+            
+            group.add(core, aura, light);
+            const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+            group.position.copy(camera.position).addScaledVector(dir, 5);
+            scene.add(group);
+            
+            blackHoles.push({ 
+                group, velocity: dir.multiplyScalar(0.4), age: 0, 
+                strength: 0.5, radius: 40, rays: [] 
+            });
+            
+            player.lastBlackHole = now;
+            updateAbilityUI('holeBar', player.blackHoleCooldown, 'holeStatus');
+        }
+
+        function updateAbilityUI(id, time, statusId) {
+            const bar = document.getElementById(id); 
+            const status = document.getElementById(statusId);
+            if (!bar || !status) return;
+            bar.style.transition = 'none'; bar.style.width = "0%";
+            status.innerText = "Recargando...";
+            status.classList.add('opacity-50');
+            
+            setTimeout(() => { 
+                bar.style.transition = `width ${time}ms linear`; 
+                bar.style.width = "100%"; 
+                setTimeout(() => {
+                    status.innerText = "Listo";
+                    status.classList.remove('opacity-50');
+                }, time);
+            }, 50);
+        }
+
+        function shoot() {
+            const now = Date.now(); if (now - lastFireTime < fireRate) return;
+            lastFireTime = now; playSound('shoot');
+            
+            raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+            const intersects = raycaster.intersectObjects(targets.map(t => t.mesh));
+            
+            if (intersects.length > 0) {
+                const hit = targets.find(t => t.mesh === intersects[0].object);
+                if (hit) {
+                    playSound('hit');
+                    const hm = document.getElementById('hitMarker'); hm.classList.remove('hit-anim'); void hm.offsetWidth; hm.classList.add('hit-anim');
+                    scene.remove(hit.mesh); targets = targets.filter(t => t !== hit);
+                    score++; document.getElementById('score').innerText = score;
+                    setTimeout(spawnTarget, 4000);
+                }
+            }
+            if (gun.visible) gun.position.z += 0.3;
+        }
+
+        function update() {
+            if (!camera || !gun) return;
+
+            if (mouseState.right) {
+                camera.fov = THREE.MathUtils.lerp(camera.fov, 15, 0.2);
+                gun.visible = false;
+                document.getElementById('zoomScope').style.opacity = '1';
+            } else {
+                camera.fov = THREE.MathUtils.lerp(camera.fov, 75, 0.2);
+                gun.visible = true;
+                document.getElementById('zoomScope').style.opacity = '0';
+            }
+            camera.updateProjectionMatrix();
+
+            if (mouseState.left) shoot();
+
+            const camDir = new THREE.Vector3(); camera.getWorldDirection(camDir); camDir.y = 0; camDir.normalize();
+            const sideDir = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), camDir);
+            if (moveState.fwd) camera.position.addScaledVector(camDir, player.speed);
+            if (moveState.bck) camera.position.addScaledVector(camDir, -player.speed);
+            if (moveState.lft) camera.position.addScaledVector(sideDir, player.speed);
+            if (moveState.rgt) camera.position.addScaledVector(sideDir, -player.speed);
+
+            player.velocityY -= GRAVITY; camera.position.y += player.velocityY;
+            if (camera.position.y < player.height) { camera.position.y = player.height; player.velocityY = 0; player.grounded = true; }
+
+            blackHoles.forEach((bh, i) => {
+                bh.age++;
+                bh.group.position.add(bh.velocity);
+                bh.velocity.multiplyScalar(0.96);
+
+                [...targets, ...worldProps].forEach(t => {
+                    const dist = t.mesh.position.distanceTo(bh.group.position);
+                    if (dist < bh.radius) {
+                        const pull = bh.group.position.clone().sub(t.mesh.position).normalize();
+                        const f = (bh.radius - dist) * (bh.strength / t.mass);
+                        t.velocity.addScaledVector(pull, f);
+                    }
+                });
+
+                if (bh.age > 250) {
+                    scene.remove(bh.group);
+                    blackHoles.splice(i, 1);
+                }
+            });
+
+            [...targets, ...worldProps].forEach(t => {
+                t.velocity.y -= GRAVITY;
+                t.mesh.position.add(t.velocity);
+                t.velocity.multiplyScalar(0.98);
+
+                if (t.mesh.position.y < (t.mass > 10 ? 1.25 : 0.2)) {
+                    t.mesh.position.y = (t.mass > 10 ? 1.25 : 0.2);
+                    t.velocity.y = 0;
+                    t.grounded = true;
+                }
+            });
+
+            if (gun.visible) gun.position.lerp(new THREE.Vector3(0.6, -0.4, -1), 0.2);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (scene && renderer && camera) {
+                if (document.getElementById('overlay').style.display === 'none' && !document.getElementById('settings').classList.contains('open')) { update(); }
+                renderer.render(scene, camera);
+            }
+        }
+
+        function toggleSettings(open) {
+            const panel = document.getElementById('settings');
+            if (open) { panel.classList.add('open'); document.exitPointerLock(); }
+            else {
+                panel.classList.remove('open');
+                settings.name = document.getElementById('nameInput').value || "BERTO";
+                settings.sens = (document.getElementById('sensInput').value / 25000);
+                settings.volume = document.getElementById('volInput').value / 100;
+                document.getElementById('hudName').innerText = "ID: " + settings.name.toUpperCase() + "_STATION";
+                if(document.getElementById('overlay').style.display === 'none') document.body.requestPointerLock();
+            }
+        }
+
+        window.addEventListener('resize', () => {
+            // Protección contra acceso a cámara o renderizador no inicializados
+            if (camera && renderer) {
+                camera.aspect = window.innerWidth / window.innerHeight; 
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+        });
+    </script>
+</body>
+</html>
